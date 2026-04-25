@@ -385,6 +385,7 @@ class Task(abc.ABC):
         self,
         *,
         limit: Union[int, None] = None,
+        limit_shuffle: bool = False, # 新增参数
         rank: int = 0,
         world_size: int = 1,
         cache_requests: bool = False,
@@ -432,7 +433,25 @@ class Task(abc.ABC):
         if cache_requests and (not cached_instances or rewrite_requests_cache) and limit is not None:
             limit = None
 
-        doc_id_docs = utils.create_iterator(enumerate(self.eval_docs_no_media), rank=rank, limit=int(limit) if limit else None, world_size=world_size)
+        # 获取原始迭代器
+        if limit_shuffle and limit is not None:
+            # 如果开启了打乱且设置了 limit，则生成打乱的索引顺序
+            import random
+            indices = list(range(len(self.eval_docs_no_media)))
+            random.Random(42).shuffle(indices) # 固定种子保证多卡一致
+
+            def shuffled_iterator():
+                for idx in indices:
+                    yield idx, self.eval_docs_no_media[idx]
+            
+            raw_iterator = shuffled_iterator()
+        else:
+            # 默认顺序
+            raw_iterator = enumerate(self.eval_docs_no_media)
+
+        # 传入 raw_iterator 给 create_iterator 进行切片
+        doc_id_docs = utils.create_iterator(raw_iterator, rank=rank, limit=int(limit) if limit else None, world_size=world_size)
+        
         doc_iterator_for_counting = itertools.islice(range(len(self.test_docs())), rank, limit, world_size) if self.has_test_docs() else itertools.islice(range(len(self.validation_docs())), rank, limit, world_size)
 
         num_docs = sum(1 for _ in doc_iterator_for_counting)
@@ -661,10 +680,26 @@ class Task(abc.ABC):
         else:
             raise ValueError(f"Task dataset (path={self.DATASET_PATH}, name={self.DATASET_NAME}) must have valid or test docs!")
 
-    def doc_iterator(self, *, rank: int = 0, limit: Union[int, None] = None, world_size: int = 1) -> Iterator[Tuple[int, Any]]:
+    def doc_iterator(self, *, rank: int = 0, limit: Union[int, None] = None, limit_shuffle: bool = False, world_size: int = 1) -> Iterator[Tuple[int, Any]]:
         limit = int(limit) if limit else None
+        
+        # --- NEW CODE START ---
+        if limit_shuffle and limit is not None:
+            import random
+            indices = list(range(len(self.eval_docs)))
+            random.Random(42).shuffle(indices) # 必须使用与 construct_requests 相同的种子
+
+            def shuffled_iterator():
+                for idx in indices:
+                    yield idx, self.eval_docs[idx]
+            
+            raw_iterator = shuffled_iterator()
+        else:
+            raw_iterator = enumerate(self.eval_docs)
+        # --- NEW CODE END ---
+
         doc_iterator = utils.create_iterator(
-            enumerate(self.eval_docs),
+            raw_iterator,
             rank=int(rank),
             limit=limit,
             world_size=int(world_size),

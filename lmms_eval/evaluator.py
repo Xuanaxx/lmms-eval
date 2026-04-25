@@ -64,6 +64,7 @@ def simple_evaluate(
     rewrite_requests_cache: bool = False,
     delete_requests_cache: bool = False,
     limit: Optional[Union[int, float]] = None,
+    limit_shuffle: bool = False,
     bootstrap_iters: int = 100000,
     check_integrity: bool = False,
     write_out: bool = False,
@@ -270,6 +271,7 @@ def simple_evaluate(
         lm=lm,
         task_dict=task_dict,
         limit=limit,
+        limit_shuffle=limit_shuffle,
         cache_requests=cache_requests,
         rewrite_requests_cache=rewrite_requests_cache,
         bootstrap_iters=bootstrap_iters,
@@ -333,6 +335,7 @@ def evaluate(
     lm: "LM",
     task_dict,
     limit: Optional[int] = None,
+    limit_shuffle: bool = False, # 新增参数
     cache_requests: bool = False,
     rewrite_requests_cache: bool = False,
     bootstrap_iters: Optional[int] = 100000,
@@ -448,6 +451,7 @@ def evaluate(
         limit = get_sample_size(task, limit)
         task.build_all_requests(
             limit=limit,
+            limit_shuffle=limit_shuffle, # 传递给 Task
             rank=global_rank,
             world_size=world_size,
             cache_requests=cache_requests,  # later we will add them
@@ -550,9 +554,25 @@ def evaluate(
         # iterate over different filters used
         for filter_key in task.instances[0].filtered_resps.keys():
             if cli_args is not None and not cli_args.process_with_media:
-                doc_iterator = create_iterator(enumerate(task.eval_docs_no_media), rank=RANK, limit=int(limit) if limit else None, world_size=WORLD_SIZE)
+                # --- MODIFIED BLOCK START ---
+                # 处理无媒体加载时的打乱逻辑
+                if limit_shuffle and limit is not None:
+                    import random
+                    indices = list(range(len(task.eval_docs_no_media)))
+                    random.Random(42).shuffle(indices) # 保持种子一致
+                    def _shuffled_iter():
+                        for idx in indices:
+                            yield idx, task.eval_docs_no_media[idx]
+                    raw_iter = _shuffled_iter()
+                else:
+                    raw_iter = enumerate(task.eval_docs_no_media)
+
+                doc_iterator = create_iterator(raw_iter, rank=RANK, limit=int(limit) if limit else None, world_size=WORLD_SIZE)
+                # --- MODIFIED BLOCK END ---
             else:
-                doc_iterator = task.doc_iterator(rank=RANK, limit=limit, world_size=WORLD_SIZE)
+                # 传递 limit_shuffle 参数
+                doc_iterator = task.doc_iterator(rank=RANK, limit=limit, limit_shuffle=limit_shuffle, world_size=WORLD_SIZE)
+            
             doc_iterator_for_counting = itertools.islice(range(len(task.test_docs())), RANK, limit, WORLD_SIZE) if task.has_test_docs() else itertools.islice(range(len(task.validation_docs())), RANK, limit, WORLD_SIZE)
             total_docs = sum(1 for _ in doc_iterator_for_counting)
             pbar = tqdm(total=total_docs, desc=f"Postprocessing", disable=(RANK != 0))

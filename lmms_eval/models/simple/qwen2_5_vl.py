@@ -58,7 +58,7 @@ class Qwen2_5_VL(lmms):
     ) -> None:
         super().__init__()
         # Do not use kwargs for now
-        assert kwargs == {}, f"Unexpected kwargs: {kwargs}"
+        # assert kwargs == {}, f"Unexpected kwargs: {kwargs}"
 
         # Validate attention implementation
         valid_attn_implementations = [None, "flash_attention_2", "sdpa", "eager"]
@@ -86,6 +86,9 @@ class Qwen2_5_VL(lmms):
         model_kwargs = {
             "torch_dtype": "bfloat16",
             "device_map": self.device_map,
+            "scoring_layer_idx": kwargs.get("scoring_layer_idx", None),
+            "limit_data_num": kwargs.get("limit_data_num", None),
+            "metrics_save_path": kwargs.get("metrics_save_path", None),
         }
 
         # Add attention implementation if specified

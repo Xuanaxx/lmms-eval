@@ -141,6 +141,12 @@ def parse_eval_args() -> argparse.Namespace:
         help="Limit the number of examples per task. " "If <1, limit is a percentage of the total number of examples.",
     )
     parser.add_argument(
+        "--limit_shuffle", 
+        action="store_true", 
+        default=False, 
+        help="Randomly shuffle the dataset before limiting the number of examples.",
+    )
+    parser.add_argument(
         "--use_cache",
         "-c",
         type=str,
@@ -491,6 +497,7 @@ def cli_evaluate_single(args: Union[argparse.Namespace, None] = None) -> None:
         device=args.device,
         use_cache=args.use_cache,
         limit=args.limit,
+        limit_shuffle=args.limit_shuffle, 
         check_integrity=args.check_integrity,
         write_out=args.write_out,
         log_samples=args.log_samples,

@@ -1,4 +1,10 @@
 task: textvqa_val
+dataset_path: arrow
+dataset_kwargs:
+  data_files:
+    validation:
+      - /home/user/czx/.cache/huggingface/datasets/lmms-lab___textvqa/default/0.0.0/9c0699cd19768ac5ab97568f6b3cbac4c0062884/textvqa-validation-00000-of-00002.arrow
+      - /home/user/czx/.cache/huggingface/datasets/lmms-lab___textvqa/default/0.0.0/9c0699cd19768ac5ab97568f6b3cbac4c0062884/textvqa-validation-00001-of-00002.arrow
 test_split: validation
 metric_list:
   - metric: exact_match

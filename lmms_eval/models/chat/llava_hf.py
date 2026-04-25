@@ -85,6 +85,7 @@ class LlavaHf(LlavaHfSimple):
             if "num_beams" not in gen_kwargs:
                 gen_kwargs["num_beams"] = 1
             do_sample = True if gen_kwargs["temperature"] > 0 else False
+            model_generation_kwargs = dict(self.custom_generation_kwargs)
             try:
                 start_time = time.time()
                 cont = self.model.generate(
@@ -97,6 +98,7 @@ class LlavaHf(LlavaHfSimple):
                     use_cache=self.use_cache,
                     pad_token_id=self.eot_token_id,
                     eos_token_id=self.eot_token_id,
+                    **model_generation_kwargs,
                 )
                 end_time = time.time()
                 cont = cont[:, inputs["input_ids"].shape[-1] :]

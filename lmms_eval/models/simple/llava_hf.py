@@ -30,6 +30,56 @@ DEFAULT_VIDEO_TOKEN = "<video>"
 # Default chat for llava-hf/llava-1.5 models: https://huggingface.co/collections/llava-hf/llava-15-65f762d5b6941db5c2ba07e0
 VICUNA_CHAT_TEMPLATE = "{% for message in messages %}{% if loop.index0 == 0 %}A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user's questions. USER: {{ message['content'] }} {% elif message['role'] == 'user' %}USER: {{ message['content'] }} {% else %} ASSISTANT: {{ message['content'] }}{{ eos_token }}{% endif %}{% endfor %}{% if add_generation_prompt %}{{ 'ASSISTANT:' }}{% endif %}"
 
+LLAVA_PRUNING_ARG_TYPES = {
+    "skip_source_layer_idx": int,
+    "skip_target_layer_idx": int,
+    "scoring_layer_idx": int,
+    "visual_token_keep_ratio": float,
+    "visual_token_min_keep": int,
+    "rss_beta": float,
+    "rss_threshold": float,
+    "limit_data_num": int,
+    "metrics_save_path": str,
+    "attn_anchor": str,
+    "pool_type": str,
+    "scoring_alpha": float,
+    "force_fixed_scoring_layer": bool,
+    "add_type": str,
+    "pruning_mode": str,
+    "visual_token_target_count": int,
+    "wfl_lambda": float,
+    "wfl_sigma": float,
+    "wfl_coverage_weight_type": str,
+    "mmr_lambda": float,
+    "mmr_sigma": float,
+    "stage1_merge_layer_idx": int,
+    "recover_layer_idx": int,
+    "final_prune_layer_idx": int,
+    "stage1_target_count": int,
+    "recover_topk_target_count": int,
+}
+
+
+def _coerce_llava_pruning_arg(key, value):
+    target_type = LLAVA_PRUNING_ARG_TYPES[key]
+    if target_type is bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            lowered = value.strip().lower()
+            if lowered in {"1", "true", "yes", "y", "on"}:
+                return True
+            if lowered in {"0", "false", "no", "n", "off"}:
+                return False
+        raise ValueError(f"Cannot parse boolean llava_hf arg {key}={value!r}")
+    if target_type is int:
+        return int(value)
+    if target_type is float:
+        return float(value)
+    return str(value)
+
 model_map = {
     "llava": LlavaForConditionalGeneration,
     "llava_next": LlavaNextForConditionalGeneration,
@@ -77,7 +127,10 @@ class LlavaHf(lmms):
         **kwargs,
     ) -> None:
         super().__init__()
-        # Do not use kwargs for now
+        self.custom_generation_kwargs = {}
+        for key in list(kwargs):
+            if key in LLAVA_PRUNING_ARG_TYPES:
+                self.custom_generation_kwargs[key] = _coerce_llava_pruning_arg(key, kwargs.pop(key))
         assert kwargs == {}, f"Unexpected kwargs: {kwargs}"
 
         accelerator = Accelerator()
@@ -105,6 +158,8 @@ class LlavaHf(lmms):
         self.batch_size_per_gpu = int(batch_size)
         self.chat_template = chat_template
         self.use_cache = use_cache
+        if self.custom_generation_kwargs:
+            eval_logger.info(f"Using custom LLaVA generation kwargs: {self.custom_generation_kwargs}")
         if accelerator.num_processes > 1 and device_map == "":
             assert accelerator.distributed_type in [DistributedType.FSDP, DistributedType.MULTI_GPU, DistributedType.DEEPSPEED], "Unsupported distributed type provided. Only DDP and FSDP are supported."
             # If you want to use DistributedType.DEEPSPEED, you have to run accelerate config before using the model
@@ -358,6 +413,7 @@ class LlavaHf(lmms):
             if "num_beams" not in gen_kwargs:
                 gen_kwargs["num_beams"] = 1
             do_sample = True if gen_kwargs["temperature"] > 0 else False
+            model_generation_kwargs = dict(self.custom_generation_kwargs)
             try:
                 cont = self.model.generate(
                     **inputs,
@@ -369,6 +425,7 @@ class LlavaHf(lmms):
                     use_cache=self.use_cache,
                     pad_token_id=self.eot_token_id,
                     eos_token_id=self.eot_token_id,
+                    **model_generation_kwargs,
                 )
                 cont = cont[:, inputs["input_ids"].shape[-1] :]
             except Exception as e:
