@@ -53,8 +53,13 @@ LLAVA_PRUNING_ARG_TYPES = {
 }
 
 
-def _coerce_llava_pruning_arg(key, value):
-    target_type = LLAVA_PRUNING_ARG_TYPES[key]
+LLAVA_LOAD_ARG_TYPES = {
+    "learnable_prune_model": bool,
+}
+
+
+def _coerce_llava_arg(key, value, arg_types):
+    target_type = arg_types[key]
     if target_type is bool:
         if isinstance(value, bool):
             return value
@@ -72,6 +77,14 @@ def _coerce_llava_pruning_arg(key, value):
     if target_type is float:
         return float(value)
     return str(value)
+
+
+def _coerce_llava_pruning_arg(key, value):
+    return _coerce_llava_arg(key, value, LLAVA_PRUNING_ARG_TYPES)
+
+
+def _coerce_llava_load_arg(key, value):
+    return _coerce_llava_arg(key, value, LLAVA_LOAD_ARG_TYPES)
 
 
 try:
@@ -120,9 +133,12 @@ class Llava(lmms):
     ) -> None:
         super().__init__()
         self.custom_generation_kwargs = {}
+        llava_load_kwargs = {}
         for key in list(kwargs):
             if key in LLAVA_PRUNING_ARG_TYPES:
                 self.custom_generation_kwargs[key] = _coerce_llava_pruning_arg(key, kwargs.pop(key))
+            elif key in LLAVA_LOAD_ARG_TYPES:
+                llava_load_kwargs[key] = _coerce_llava_load_arg(key, kwargs.pop(key))
         use_flash_attention_2 = kwargs.pop("use_flash_attention_2", None)
         assert kwargs == {}, f"Unexpected kwargs: {kwargs}"
 
@@ -142,6 +158,7 @@ class Llava(lmms):
         llava_model_args = {
             "multimodal": True,
         }
+        llava_model_args.update(llava_load_kwargs)
         if customized_config is not None:
             llava_model_args["customized_config"] = customized_config
         if attn_implementation is not None:
