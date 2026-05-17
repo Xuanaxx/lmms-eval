@@ -23,6 +23,57 @@ warnings.filterwarnings("ignore")
 
 from loguru import logger as eval_logger
 
+LLAVA_PRUNING_ARG_TYPES = {
+    "skip_source_layer_idx": int,
+    "skip_target_layer_idx": int,
+    "scoring_layer_idx": int,
+    "visual_token_keep_ratio": float,
+    "visual_token_min_keep": int,
+    "rss_beta": float,
+    "rss_threshold": float,
+    "limit_data_num": int,
+    "metrics_save_path": str,
+    "attn_anchor": str,
+    "pool_type": str,
+    "scoring_alpha": float,
+    "force_fixed_scoring_layer": bool,
+    "add_type": str,
+    "pruning_mode": str,
+    "visual_token_target_count": int,
+    "wfl_lambda": float,
+    "wfl_sigma": float,
+    "wfl_coverage_weight_type": str,
+    "mmr_lambda": float,
+    "mmr_sigma": float,
+    "stage1_merge_layer_idx": int,
+    "recover_layer_idx": int,
+    "final_prune_layer_idx": int,
+    "stage1_target_count": int,
+    "recover_topk_target_count": int,
+}
+
+
+def _coerce_llava_pruning_arg(key, value):
+    target_type = LLAVA_PRUNING_ARG_TYPES[key]
+    if target_type is bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            lowered = value.strip().lower()
+            if lowered in {"1", "true", "yes", "y", "on"}:
+                return True
+            if lowered in {"0", "false", "no", "n", "off"}:
+                return False
+        raise ValueError(f"Cannot parse boolean llava arg {key}={value!r}")
+    if target_type is int:
+        return int(value)
+    if target_type is float:
+        return float(value)
+    return str(value)
+
+
 try:
     from llava.constants import DEFAULT_IMAGE_TOKEN, IMAGE_TOKEN_INDEX
     from llava.conversation import conv_templates
@@ -68,7 +119,11 @@ class Llava(lmms):
         **kwargs,
     ) -> None:
         super().__init__()
-        # Do not use kwargs for now
+        self.custom_generation_kwargs = {}
+        for key in list(kwargs):
+            if key in LLAVA_PRUNING_ARG_TYPES:
+                self.custom_generation_kwargs[key] = _coerce_llava_pruning_arg(key, kwargs.pop(key))
+        use_flash_attention_2 = kwargs.pop("use_flash_attention_2", None)
         assert kwargs == {}, f"Unexpected kwargs: {kwargs}"
 
         accelerator_kwargs = InitProcessGroupKwargs(timeout=timedelta(weeks=52))
@@ -91,8 +146,8 @@ class Llava(lmms):
             llava_model_args["customized_config"] = customized_config
         if attn_implementation is not None:
             llava_model_args["attn_implementation"] = attn_implementation
-        if "use_flash_attention_2" in kwargs:
-            llava_model_args["use_flash_attention_2"] = kwargs["use_flash_attention_2"]
+        if use_flash_attention_2 is not None:
+            llava_model_args["use_flash_attention_2"] = use_flash_attention_2
         model_name = model_name if model_name is not None else get_model_name_from_path(pretrained)
         try:
             # Try to load the model with the multimodal argument
@@ -111,6 +166,8 @@ class Llava(lmms):
         self.conv_template = conv_template
         self.use_cache = use_cache
         self.truncate_context = truncate_context
+        if self.custom_generation_kwargs:
+            eval_logger.info(f"Using custom LLaVA generation kwargs: {self.custom_generation_kwargs}")
         # assert self.batch_size_per_gpu == 1, "Llava currently does not support batched generation. See https://github.com/haotian-liu/LLaVA/issues/754. HF Llava also has this issue."
         if accelerator.num_processes > 1:
             assert accelerator.distributed_type in [DistributedType.FSDP, DistributedType.MULTI_GPU, DistributedType.DEEPSPEED], "Unsupported distributed type provided. Only DDP and FSDP are supported."
@@ -387,6 +444,7 @@ class Llava(lmms):
             attention_masks = input_ids.ne(pad_token_ids).to(self.device)
             # These steps are not in LLaVA's original code, but are necessary for generation to work
             # TODO: attention to this major generation step...
+            model_generation_kwargs = dict(self.custom_generation_kwargs)
             try:
                 cont = self.model.generate(
                     input_ids,
@@ -400,6 +458,7 @@ class Llava(lmms):
                     num_beams=gen_kwargs["num_beams"],
                     max_new_tokens=gen_kwargs["max_new_tokens"],
                     use_cache=self.use_cache,
+                    **model_generation_kwargs,
                 )
                 text_outputs = self.tokenizer.batch_decode(cont, skip_special_tokens=True)
             except Exception as e:

@@ -1,4 +1,7 @@
+import importlib.util
+import sys
 import warnings
+from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
@@ -57,6 +60,8 @@ LLAVA_PRUNING_ARG_TYPES = {
     "final_prune_layer_idx": int,
     "stage1_target_count": int,
     "recover_topk_target_count": int,
+    "prune_ref": str,
+    "save_kl_div": bool,
 }
 
 
@@ -79,6 +84,27 @@ def _coerce_llava_pruning_arg(key, value):
     if target_type is float:
         return float(value)
     return str(value)
+
+
+def _load_custom_llava_model_class(custom_model_file: str):
+    model_path = Path(custom_model_file).expanduser().resolve()
+    if not model_path.exists():
+        raise FileNotFoundError(f"custom_model_file does not exist: {model_path}")
+
+    module_name = f"transformers.models.llava.{model_path.stem}"
+    if module_name not in sys.modules:
+        spec = importlib.util.spec_from_file_location(module_name, model_path)
+        if spec is None or spec.loader is None:
+            raise RuntimeError(f"Failed to create import spec for custom_model_file={model_path}")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
+    else:
+        module = sys.modules[module_name]
+
+    if not hasattr(module, "LlavaForConditionalGeneration"):
+        raise AttributeError(f"{model_path} does not define LlavaForConditionalGeneration")
+    return module.LlavaForConditionalGeneration
 
 model_map = {
     "llava": LlavaForConditionalGeneration,
@@ -124,6 +150,7 @@ class LlavaHf(lmms):
         chat_template: Optional[str] = None,
         use_cache: bool = True,
         max_frames_num: Optional[int] = 32,
+        custom_model_file: Optional[str] = None,
         **kwargs,
     ) -> None:
         super().__init__()
@@ -145,12 +172,17 @@ class LlavaHf(lmms):
 
         config = AutoConfig.from_pretrained(pretrained)
         self.max_frames_num = max_frames_num
-        model_type = getattr(config, "model_type", "llava")
-        model_type = model_map[model_type]
+        model_type_name = getattr(config, "model_type", "llava")
+        if custom_model_file:
+            model_type = _load_custom_llava_model_class(custom_model_file)
+            eval_logger.info(f"Using custom LLaVA model code from {custom_model_file}")
+        else:
+            model_type = model_map[model_type_name]
         self._model = model_type.from_pretrained(pretrained, revision=revision, torch_dtype=dtype, device_map=self.device_map, trust_remote_code=trust_remote_code, attn_implementation=attn_implementation)
 
         self.pretrained = pretrained
-        self._image_processor = AutoProcessor.from_pretrained(pretrained, revision=revision, trust_remote_code=trust_remote_code)
+        self.original_model_path = "/data2/chenzixuan/model/llava-hf/llava-1.5-7b-hf"
+        self._image_processor = AutoProcessor.from_pretrained(self.original_model_path, revision=revision, trust_remote_code=trust_remote_code)
         # Pad from left for batched generation: https://huggingface.co/docs/transformers/v4.39.3/en/model_doc/llava#usage-tips
         self._image_processor.tokenizer.padding_side = "left"
         self._tokenizer = self._image_processor.tokenizer

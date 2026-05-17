@@ -12,7 +12,7 @@ export TRANSFORMERS_VERBOSITY="${TRANSFORMERS_VERBOSITY:-info}"
 export TRANSFORMERS_USE_PYTORCH_OPERATORS="${TRANSFORMERS_USE_PYTORCH_OPERATORS:-1}"
 export OPENAI_API_KEY="${OPENAI_API_KEY:-sk-YP2RHFk6AQGUWtgCaMG9hdm685ZtkcFX1Uf5vplQjzI1VHCc}"
 export OPENAI_API_URL="${OPENAI_API_URL:-https://xiaoai.plus/v1/chat/completions}"
-export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-5}"
+export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 
 MODEL_PATH="${MODEL_PATH:-/data2/chenzixuan/model/llava-hf/llava-1.5-7b-hf}"
 
@@ -20,12 +20,15 @@ MODEL_PATH="${MODEL_PATH:-/data2/chenzixuan/model/llava-hf/llava-1.5-7b-hf}"
 TASKS="${TASKS:-textvqa_val}"
 
 OUTPUT_TASKS_SUFFIX="Tasks_$(echo "${TASKS}" | tr ',' '_')"
-OUTPUT_FOLDER="v35_three_stage_quadtree_recover_rss_topk_rss_score_${OUTPUT_TASKS_SUFFIX}"
+OUTPUT_FOLDER="best_param_three_stage_idx0_quadtree_optimized_288_idx6_recover_rss_topk_288_dynamic_idx20_rss_score_32_stage1_max_merge_level_2_level_penalty_0.15_priority_alpha_0.25_${OUTPUT_TASKS_SUFFIX}"
 OUTPUT_PATH="${OUTPUT_PATH:-/data2/chenzixuan/open_source_projects/lmms-eval/test_outputs/logs/whole_test/llava/${OUTPUT_FOLDER}/}"
 LOG_PATH="${LOG_PATH:-${OUTPUT_PATH}/test.log}"
 mkdir -p "${OUTPUT_PATH}"
 
 MODEL_ARGS="pretrained=${MODEL_PATH},device_map=auto,attn_implementation=eager"
+if [[ -n "${EXTRA_MODEL_ARGS:-}" ]]; then
+    MODEL_ARGS="${MODEL_ARGS},${EXTRA_MODEL_ARGS}"
+fi
 
 LIMIT_ARGS=()
 if [[ -n "${LIMIT:-}" ]]; then
@@ -47,7 +50,7 @@ accelerate launch --num_processes=1 \
     "${LIMIT_ARGS[@]}" \
     --batch_size 1 \
     --log_samples \
-    --log_samples_suffix "v35_three_stage_quadtree_recover_rss_topk_rss_score_${OUTPUT_TASKS_SUFFIX}" \
+    --log_samples_suffix "best_param_three_stage_idx0_quadtree_optimized_288_idx6_recover_rss_topk_288_dynamic_idx20_rss_score_32_stage1_max_merge_level_2_level_penalty_0.15_priority_alpha_0.25_${OUTPUT_TASKS_SUFFIX}" \
     --output_path "${OUTPUT_PATH}" \
     > "${LOG_PATH}" 2>&1
 
