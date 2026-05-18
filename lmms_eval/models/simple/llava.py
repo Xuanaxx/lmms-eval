@@ -55,6 +55,7 @@ LLAVA_PRUNING_ARG_TYPES = {
 
 LLAVA_LOAD_ARG_TYPES = {
     "learnable_prune_model": bool,
+    "learnable_prune_scope_finalwipe_model": bool,
 }
 
 
