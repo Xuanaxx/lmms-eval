@@ -181,7 +181,7 @@ class LlavaHf(lmms):
         self._model = model_type.from_pretrained(pretrained, revision=revision, torch_dtype=dtype, device_map=self.device_map, trust_remote_code=trust_remote_code, attn_implementation=attn_implementation)
 
         self.pretrained = pretrained
-        self.original_model_path = "/data2/chenzixuan/model/llava-hf/llava-1.5-7b-hf"
+        self.original_model_path = "/data1/chenzixuan/model/llava-hf/llava-1.5-7b-hf"
         self._image_processor = AutoProcessor.from_pretrained(self.original_model_path, revision=revision, trust_remote_code=trust_remote_code)
         # Pad from left for batched generation: https://huggingface.co/docs/transformers/v4.39.3/en/model_doc/llava#usage-tips
         self._image_processor.tokenizer.padding_side = "left"
