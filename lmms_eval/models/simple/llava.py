@@ -56,6 +56,8 @@ LLAVA_PRUNING_ARG_TYPES = {
 LLAVA_LOAD_ARG_TYPES = {
     "learnable_prune_model": bool,
     "learnable_prune_scope_finalwipe_model": bool,
+    "learnable_prune_scope_recover_finalwipe_model": bool,
+    "dtype": str,
 }
 
 
@@ -218,6 +220,7 @@ class Llava(lmms):
             self.model.to(self._device)
             self._rank = 0
             self._world_size = 1
+        self._image_dtype = getattr(self.model, "dtype", torch.float16)
 
     @property
     def config(self):
@@ -301,9 +304,9 @@ class Llava(lmms):
             if visuals:
                 image = process_images(visuals, self._image_processor, self._config)
                 if type(image) is list:
-                    image = [_image.to(dtype=torch.float16, device=self.device) for _image in image]
+                    image = [_image.to(dtype=self._image_dtype, device=self.device) for _image in image]
                 else:
-                    image = image.to(dtype=torch.float16, device=self.device)
+                    image = image.to(dtype=self._image_dtype, device=self.device)
             else:
                 image = None
 
@@ -411,9 +414,9 @@ class Llava(lmms):
             if flattened_visuals:
                 image_tensor = process_images(flattened_visuals, self._image_processor, self._config)
                 if type(image_tensor) is list:
-                    image_tensor = [_image.to(dtype=torch.float16, device=self.device) for _image in image_tensor]
+                    image_tensor = [_image.to(dtype=self._image_dtype, device=self.device) for _image in image_tensor]
                 else:
-                    image_tensor = image_tensor.to(dtype=torch.float16, device=self.device)
+                    image_tensor = image_tensor.to(dtype=self._image_dtype, device=self.device)
             else:
                 image_tensor = None
 
