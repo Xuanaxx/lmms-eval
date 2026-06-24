@@ -33,7 +33,9 @@ LLAVA_PRUNING_ARG_TYPES = {
     "rss_threshold": float,
     "limit_data_num": int,
     "metrics_save_path": str,
+    "prune_ref": str,
     "attn_anchor": str,
+    "save_kl_div": bool,
     "pool_type": str,
     "scoring_alpha": float,
     "force_fixed_scoring_layer": bool,
@@ -58,6 +60,7 @@ LLAVA_LOAD_ARG_TYPES = {
     "learnable_prune_scope_finalwipe_model": bool,
     "learnable_prune_lightweight_scope_finalwipe_model": bool,
     "learnable_prune_scope_recover_finalwipe_model": bool,
+    "importance_pruning_correlation_model": bool,
     "dtype": str,
 }
 
