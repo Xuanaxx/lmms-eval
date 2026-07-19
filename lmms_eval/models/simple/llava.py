@@ -60,6 +60,7 @@ LLAVA_LOAD_ARG_TYPES = {
     "learnable_prune_scope_finalwipe_model": bool,
     "learnable_prune_lightweight_scope_finalwipe_model": bool,
     "learnable_prune_scope_recover_finalwipe_model": bool,
+    "best_layer_sweep_model": bool,
     "importance_pruning_correlation_model": bool,
     "dtype": str,
 }
